@@ -86,8 +86,11 @@ class WindowClass(QMainWindow, form_class):
             self.selectButtons.append(i)
         del temp
 
-        # for i in range(15):
-        #     print("self.selectButtons[%d].clicked.connect(lambda: self.set_selected_index(%d))" % (i, i))
+        for i in range(15):
+            print("self.selectButtons[%d].clicked.connect(lambda: self.set_selected_index(%d))" % (i, i))
+
+        for i in range(15):
+            self.selectButtons[i].clicked.connect(lambda: self.set_selected_index(i))
 
         self.selectButtons[0].clicked.connect(lambda: self.set_selected_index(0))
         self.selectButtons[1].clicked.connect(lambda: self.set_selected_index(1))
@@ -122,14 +125,24 @@ class WindowClass(QMainWindow, form_class):
             self.textBrowser.append(selectedData["title"])
             self.textBrowser.append("")
             self.textBrowser.append("<b>[artists]</b>")
+            for artist in selectedData["artists"]:
+                self.textBrowser.append(artist['display'])
             self.textBrowser.append("")
             self.textBrowser.append("<b>[groups]</b>")
+            for group in selectedData["groups"]:
+                self.textBrowser.append(group['display'])
             self.textBrowser.append("")
             self.textBrowser.append("<b>[parodys]</b>")
+            for parody in selectedData["parodys"]:
+                self.textBrowser.append(parody['display'])
             self.textBrowser.append("")
             self.textBrowser.append("<b>[characters]</b>")
+            for character in selectedData["characters"]:
+                self.textBrowser.append(character['display'])
             self.textBrowser.append("")
             self.textBrowser.append("<b>[tags]</b>")
+            for tag in selectedData["tags"]:
+                self.textBrowser.append(tag['display'])
 
 
     def search(self):
@@ -144,6 +157,13 @@ class WindowClass(QMainWindow, form_class):
                 self.thumbnailViews[i].setPixmap(qPixmapVar.scaledToWidth(100))
             print(self.loadedDatabase)
         except KeyError:
+            self.loadedDatabase = None
+            self.textBrowser.clear()
+            self.textBrowser.append("<b>[Error]</b>")
+            self.textBrowser.append("There is no result.")
+            for i in range(len(self.thumbnailViews)):
+                self.thumbnailViews[i].setPixmap(QPixmap())
+        except IndexError:
             self.loadedDatabase = None
             self.textBrowser.clear()
             self.textBrowser.append("<b>[Error]</b>")
