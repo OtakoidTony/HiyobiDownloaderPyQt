@@ -1,10 +1,15 @@
 import sys
+
+
 from PyQt5.QtWidgets import *
 from PyQt5.QtGui import *
+from PyQt5.QtCore import *
 from PyQt5 import uic
+
 import json
 import requests
 import urllib.request
+import time
 
 form_class = uic.loadUiType("HiyobiDownloader.ui")[0]
 
@@ -46,11 +51,44 @@ class Hiyobi:
         obj = json.loads(requests.get(requestUrl).text)
         return [i["name"] for i in obj]
 
+class ThreadClass(QThread): # 오직 이미지 데이터를 받아오기 위한 쓰레드
+    finished = pyqtSignal(dict)
+    progressbar = pyqtSignal(int)
+    def __init__(self, sec=0, parent=None):
+        super().__init__()
+        self.main = parent
+
+    def run(self):
+        data ={}
+        for i in range(len(self.loadedDatabase)):
+            data.update({str(i): urllib.request.urlopen(
+                urllib.request.Request(Hiyobi.get_cover_image_url(self.loadedDatabase[i]['id']),
+                                        headers={'User-Agent': 'Mozilla/5.0'})).read()})
+            self.progressbar.emit(i)
+
+        self.finished.emit(data) # 받아온 이미지 데이터를 보냄
+        self.stop() # 종료
+
+    def stop(self):
+        self.working = False
+        self.quit()
+        self.wait(5000)
+
+    @pyqtSlot(list) # 검색을 위한 데이터를 받아옴
+    def get_data(self, search_text):
+        self.loadedDatabase = search_text
+
 
 class WindowClass(QMainWindow, form_class):
-
+    get_data = pyqtSignal(list) # 스레드에서 검색창에 정보를 스레드에 넘겨주기 위함
     def __init__(self):
         super().__init__()
+
+
+        self.worker = ThreadClass(parent=self)
+        self.worker.finished.connect(self.update_image)
+        self.worker.progressbar.connect(self.progressing)
+        self.get_data.connect(self.worker.get_data)
 
         self.selectedIndex = None
         self.loadedDatabase = None
@@ -58,6 +96,8 @@ class WindowClass(QMainWindow, form_class):
         self.setupUi(self)
 
         self.progressBar.reset()
+        self.progressBar.setRange(0,14)
+
 
         self.searchBar.returnPressed.connect(self.search)
         self.searchButton.clicked.connect(self.search)
@@ -110,7 +150,7 @@ class WindowClass(QMainWindow, form_class):
 
     def set_selected_index(self, index: int):
         self.selectedIndex = index
-        print(index)
+        # print(index)
         if self.loadedDatabase == None:
             self.textBrowser.clear()
             self.textBrowser.append("<b>[Error]</b>")
@@ -144,18 +184,31 @@ class WindowClass(QMainWindow, form_class):
             for tag in selectedData["tags"]:
                 self.textBrowser.append(tag['display'])
 
+    @pyqtSlot(int)
+    def progressing(self, progress): # 진행바 설정
+        self.progressBar.setValue(progress)
+
+
+    @pyqtSlot(dict) # dict 타입의 인자를 받음, 스레드 처리를 위해서 추가
+    def update_image(self, data):
+        # print(type(self.loadedDatabase))
+        for i in range(len(self.loadedDatabase)): # 당신은 len(self.thumbnailViews)를 사용했지만 그건 심각한 코드 오류이다. self.thumbnailViews는 IndexError를 만드는 주범이다.
+            print(i)
+            qPixmapVar = QPixmap()
+            qPixmapVar.loadFromData(data[str(i)])  # 제너레이터 형식
+            self.thumbnailViews[i].setPixmap(qPixmapVar.scaledToWidth(100))
+
 
     def search(self):
         try:
-            self.loadedDatabase = Hiyobi.search(Hiyobi.tags_to_array(self.searchBar.text()))["list"]
-            for i in range(len(self.thumbnailViews)):
-                print(i)
-                qPixmapVar = QPixmap()
-                qPixmapVar.loadFromData(urllib.request.urlopen(
-                    urllib.request.Request(Hiyobi.get_cover_image_url(self.loadedDatabase[i]['id']),
-                                           headers={'User-Agent': 'Mozilla/5.0'})).read())
-                self.thumbnailViews[i].setPixmap(qPixmapVar.scaledToWidth(100))
-            print(self.loadedDatabase)
+            # print(self.worker.isRunning())
+            # print(self.worker.isFinished())
+            if (self.worker.isRunning() == False and self.worker.isFinished() == True) or \
+                    (self.worker.isRunning() == False and self.worker.isFinished() == False): # 스레드가 동작중일 때 중복 동작을 피하기 위해서
+                self.loadedDatabase = Hiyobi.search(Hiyobi.tags_to_array(self.searchBar.text()))["list"]  # 검색어를 찾고
+                self.get_data.emit(self.loadedDatabase)  # 찾은 데이터를 스레드에 보내고 (이미지 검색의 활용을 위해서)
+                self.worker.start() # 스레드를 시작한다.
+
         except KeyError:
             self.loadedDatabase = None
             self.textBrowser.clear()
@@ -163,13 +216,15 @@ class WindowClass(QMainWindow, form_class):
             self.textBrowser.append("There is no result.")
             for i in range(len(self.thumbnailViews)):
                 self.thumbnailViews[i].setPixmap(QPixmap())
-        except IndexError:
-            self.loadedDatabase = None
-            self.textBrowser.clear()
-            self.textBrowser.append("<b>[Error]</b>")
-            self.textBrowser.append("There is no result.")
-            for i in range(len(self.thumbnailViews)):
-                self.thumbnailViews[i].setPixmap(QPixmap())
+        # except IndexError: #이런거 만들지 말고 왜 오류가 나왔는지 디버깅 하자 ㅠㅠㅠ
+        #     self.loadedDatabase = None
+        #     self.textBrowser.clear()
+        #     self.textBrowser.append("<b>[Error]</b>")
+        #     self.textBrowser.append("There is no result.")
+        #     for i in range(len(self.thumbnailViews)):
+        #         self.thumbnailViews[i].setPixmap(QPixmap())
+
+
 
 
 
